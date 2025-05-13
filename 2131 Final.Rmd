@@ -1,0 +1,164 @@
+---
+title: ''
+author: ''
+date: ''
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Fall 2020/STAT 2131 - Applied Statistical Methods 1/Final")
+air = read.csv("airfoil.csv")
+library(MASS)
+library(boot)
+```
+
+\pagenumbering{gobble}
+
+# Problem 2
+
+#### An airfoil is the cross-sectional shape of a wing or propeller, and is the object that helps generate lift (the force that allows airplanes to fly, for example). Here you will use the data “airfoil.dat” to model “pressure” (the sound pressure level, in decibels) as a function of “frequency”, “angle”, “chordLength”, “velocity”, and “thickness”.
+
+#### (a) Use ordinary least squares to regress pressure onto all of the other variables.
+
+```{r}
+model = lm(pressure ~ ., data = air)
+model
+```
+
+##### (i) Write down the assumed mathematical model for pressure, define all coefficients in your model, and clearly list all assumptions.
+
+The model:  
+pressure = 132.8 - 0.001(frequency) - 0.422(angle) - 35.69(chordLength) + 0.099(velocity) - 147.3(thickness)  
+(plus some error)  
+Coefficients:  
+- the negative coefficient for frequency, angle, chordLength, and thickness suggest that all else constant, a unit increase in any of these covariates result in a decrease in pressure  
+- the positive coefficient for velocity suggests that all else constant, a unit increase in velocity will result in an increase in pressure  
+
+OLS Assumptions:  
+1. Data is linear (here, pressure is assumed to be linear in each covariate)  
+2. Residuals are normal (errors are normally distributed)  
+3. Residual variance is constant  
+4. Residuals are independent  (if they are not, the x's may not really be explaining y)
+
+##### (ii) In order to satisfy modelling assumptions, decide whether the dependent variable requires a transformation.
+
+```{r}
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+We can see in the plots that we do need a transformation. The first plot shows a curve rather than the desired horizontal line, and the fourth plot shows some influential points in relation to Cook's distance. We might try box-cox.
+
+##### (iii) Fit the new model, and determine if this new model satisfies your assumptions from part (i).
+
+```{r, fig.width = 5, fig.height = 4}
+par(mfrow = c(1, 1))
+bc = boxcox(model)
+lambda = bc$x[which.max(bc$y)]
+# round(lambda, 3)
+new_model = lm(((pressure^lambda-1)/lambda) ~ frequency + angle + chordLength + velocity + thickness, data = air)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(new_model)
+```
+
+After fitting a boxcox transformation model, we still have residuals with significant leverage, which does not satisfy our assumptions.
+
+##### (iv) A colleague suggests that because pressure is not normally distributed, the bootstrap is a more appropriate way to do inference in these data. Design a bootstrap procedure to determine a 90% confidence interval for the expected transformed pressure variable at frequency, angle, chordLength, velocity and thickness values given in “Interval.txt”.
+
+```{r}
+new.data = data.frame(
+  frequency = 1000, 
+  angle = 1, 
+  chordLength = 0.2, 
+  velocity = 70, 
+  thickness = 0.003
+)
+
+# function takes in formula, returns prediction for pressure based on new.data
+pres_mean = function(formula, data, indices){
+  d = data[indices, ]
+  fit = lm(formula, data = d)
+  return(exp(log(predict.lm(fit, newdata = new.data)*lambda + 1)/lambda))
+}
+
+results = boot(data = air, statistic = pres_mean, R = 500, 
+               formula = ((pressure^lambda-1)/lambda) ~ frequency + angle + chordLength + velocity + thickness)
+
+ci = boot.ci(results, conf = 0.90, type = "basic")
+ci
+```
+
+First, I created a dataframe with the provided values. Then, I wrote a function that takes in data, a formula, and indices and produces the prediction for pressure, transformed from its boxcox format. The boot function provides the inputs to find the confidence interval for pressure (re-transformed) at the given values of all other variables.
+
+##### (v) How does your interval compare to the confidence interval obtained using standard normal theory? Are the similarities/differences between the two surprising? Explain.
+
+Using the predicted pressure from the boxcox model (no bootstrapping), we obtain the following confidence interval. The first interval is the prediction interval from new data using the original model, and the second interval is the transformed model from boxcox (and transformed back - exp(log(p*lambda + 1/lambda))).
+
+```{r}
+# interval from original model
+pred = predict.lm(model, newdata = new.data, interval = "confidence", level = 0.90)
+round(pred, 3)
+# interval from transformed model, readjusted
+p = predict.lm(new_model, newdata = new.data, interval = "confidence", level = 0.90)
+round(exp(log(p*lambda + 1)/lambda), 3)
+```
+
+Because of what bootstrapping provides, we can rely on the Central Limit Theorem to satisfy assumptions without requiring normally distributed data - resampling approaches normality. Since bootstrapping by nature reassembles the data/approach to computing the confidence interval, it resembles a standard normal confidence interval, and they turn out to be extremely similar. This is not surprising. In bootstrap we are sampling with replacement and creating sub-samples - as we learned in class, the bootstrap is to the sample as the sample is the population. If we increase the number of bootstrap samples, we know by CLT that we approach normal distribution and we have essentially come full circle. The more bootstrap samples we take, the closer the bootstrap estimate will be to the sample estimate (the same way the proportion of heads when flipping a fair coin gets closer and closer to .5 the more times you flip it). 
+
+#### (b) Using the most appropriate model from (a), determine if the dependent variable is nonlinearly related to the five covariates. If so, do your best to fix these non-linearities in the context of classical linear modelling, and determine if the changes to your model from part (a) are significant.
+
+Based on model diagnostics from the two models above, the original OLS model has a better fit (by R sq and F-test), and we can use that one to assess whether further transformations are necessary. Using plot() for this model we can see how the residuals fit (or don't), as well as the leverage points we discussed earlier. These are a big hint that we will need to transform the variables.
+
+```{r, fig.width = 4, fig.height = 3}
+# function to plot each covariate against the residuals of the model
+check = function(x){
+  plot(x, resid(model))
+  abline(h = 0, col = "red")
+}
+
+par(mfrow = c(1, 1))
+check(air$frequency)
+check(air$angle)
+check(air$chordLength)
+check(air$velocity)
+check(air$thickness)
+```
+
+While most of the covariates seem ok, frequency appears to have a slightly increasing relationship with pressure, so we can try a couple transformations and reassess.
+
+```{r}
+par(mfrow = c(2, 2))
+check(log(air$frequency))
+check(air$frequency^2)
+check(sqrt(air$frequency))
+check(1/air$frequency)
+
+par(mfrow = c(2, 1))
+hist(log(air$frequency))
+hist(1/air$frequency)
+```
+
+While the first and fourth transformations seem the most promising, it comes down to the logged data since the histogram is so close to normal. Additionally, while viewing the individual plots for each covariate, I saw that there are only 4 levels of velocity, and treating this as a factor variable may help the model as well. Angle has 6 levels - I'll try treating that as a factor variable too.
+
+The first two lines refer to the model with logged frequency and factor(velocity), and the second two lines correspond to the model with logged frequency with factor(velocity) and factor(angle).
+
+```{r}
+model.fix = lm(pressure ~ log(frequency) + angle + chordLength + factor(velocity) + thickness, data = air)
+model.fix2 = lm(pressure ~ log(frequency) + factor(angle) + chordLength + factor(velocity) + thickness, 
+                data = air)
+round(summary(model.fix)$r.sq, 3); round(summary(model.fix)$fstatistic, 3)
+round(summary(model.fix2)$r.sq, 3); round(summary(model.fix2)$fstatistic, 3)
+```
+
+Even though it reduces the available degrees of freedom, it appears that treating both angle and velocity as factor variables helps the model (based on R sq value, and the F stat is still significant), and the logged frequency variable remains a significant predictor for pressure in this model.
+
+#### (c) In your opinion, is the model from part (b) better or worse than that from part (a)? While we have not discussed many alternatives in class, do you think linear modelling is an appropriate way to analyze these data? Explain.
+
+The second model does not appear to really be fixing the problem, which leads me to believe that a linear model might not be the best course of action for this dataset. For chordLength and velocity, there are only 6 and 4 levels respectively, and even when fitted as factor variables the model does not seem to improve. This process also examined a number of ways to address poor model fit, and they do not seem to work in the context of linear regression, which leads me to believe there is a different and potentially better way to fit this data.
+
