@@ -1,0 +1,115 @@
+---
+title: ""
+author: ""
+date: ""
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Fall 2020/STAT 2131 - Applied Statistical Methods 1/Homeworks/HW7")
+library(car)
+grocery = read.csv("grocery.csv") # problem 3
+patient = read.csv("patient.csv") # problem 4
+
+```
+
+# STAT 2131 HW7 - Problems 3, 4
+
+## Problem 3: KNNL 6.10
+
+Data is from problem 6.9:  
+  Y = total labor hours 
+  X1 = number of cases shipped  
+  X2 = indirect costs of total labor hours as a percentage  
+  X3 = qualitative predictor called holiday; 1 if week has a holiday, 0 otherwise  
+
+*(a) Fit regression model (6.5) to the data for three predictor variables. State the estimated regression function. How are bl, b2, and b3 interpreted here?*
+
+```{r}
+model1 = lm(Y ~ X1 + X2 + X3, data = grocery)
+summary(model1)
+
+```
+
+As seen in the R output, the regression function can be written as:  
+  Y = 4,150 + .0000787X1 - 13.17X2 + 623.6X3  
+For every increase in cases shipped (X1), total labor hours increases by .0000787; for every increase in indirect cost of labor hours by one percentage point, total labor hours decreases by 13.17; and for a week with a holiday, total labor hours increases by 623.6.
+
+*(c) Plot the residuals against Y, X1, X2, X3, and X1X2 on separate graphs. Also prepare a normal probability plot. Interpret the plots and summarize your findings.*
+
+```{r, fig.width = 5, fig.height = 3}
+model1.res = resid(model1)
+plot(grocery$Y, model1.res, xlab = "Y", ylab = "Residuals", main = "Model Residuals", 
+     pch = 20, col = 2)
+plot(grocery$X1, model1.res, xlab = "X1", ylab = "Residuals", 
+     main = "Model Residuals", pch = 20, col = 3)
+plot(grocery$X2, model1.res, xlab = "X2", ylab = "Residuals", 
+     main = "Model Residuals", pch = 20, col = 4)
+plot(grocery$X3, model1.res, xlab = "X3", ylab = "Residuals", 
+     main = "Model Residuals", pch = 20, col = 5)
+plot(grocery$X1*grocery$X2, model1.res, xlab = "X1*X2", ylab = "Residuals", 
+     main = "Model Residuals", pch = 20, col = 6)
+
+qqnorm(model1$residuals, xlab = "Theoretical Normal Quantiles", 
+       ylab = "Estimated Residual Quantiles", pch = 20)
+qqline(model1$residuals, col = "red")
+
+```
+
+The first plot shows that the residuals of the model and the response variable Y are highly correlated, save for a few points outside of the linear trend. This would indicate that the model we put together is not a great fit, since the variation in Y is explained largely by the residuals rather than by the independent variables. The rest of the residual plots show no association (barring the X3 plot, which is not as easy to tell from just looking). The interaction plot between X1 and X2 additionally shows no association. The normal qq-plot shows that the residuals do follow a normal trend, which may make us feel a bit better about the model.
+
+*7.4 (b) Test whether X2 can be dropped from the regression model given that X1 and X3 are retained. Use the F test statistic and alpha = .05. State the alternatives, decision rule, and conclusion. What is the P-value of the test?*
+
+Ho: B2 = 0 (can be dropped, no effect on response)  
+Ha: B2 != 0 (should be kept in the model, effect on response)  
+alpha = .05  
+Decision rule: compare model diagnostics, F statistic  
+
+```{r}
+linearHypothesis(model1, c("X2 = 0"))
+
+```
+
+Conclusion: From the hypothesis function we can see that the p-value for testing X2 = 0 is .57, the F-statistic is .3251, and the SSR for B2 is 6674.6. With alpha = 0.05 we fail to reject the Ho, and conclude that we can drop X2 from the model.
+
+## Problem 4: KNNL 6.16
+
+Data is from problem 6.15:  
+  Y = patient satisfaction  
+  X1 = patient's age in years  
+  X2 = severity of illness, index  
+  X3 = anxiety level, index  
+  
+*(a) Test whether there is a regression relation; use alpha = .10. State the alternatives, decision rule, and conclusion. What does your test imply about B1, B2, and B3? What is the P-value of the test?*
+
+Ho: There is no relationship between the explanatory variables and the dependent variable.  
+Ha: There is some relationship between one or more of the explantory variables and the dependent variable.  
+alpha = .10  
+Decision rule: look for p-value of less than .10 to determine significance of relationship.  
+
+```{r}
+model2 = lm(Y ~ X1 + X2 + X3, data = patient)
+summary(model2)
+
+```
+
+Conclusion: There are two significant predictors in the model, X1 and X3, that show a relationship with the dependent variable. With 90% confidence, patient's age (in years) and anxiety level (as an index) are significant predictors for patient satisfaction, severity of illness (as an index) is not, with a model p-value of about 0.000.
+
+*(b) Obtain joint interval estimates of B1, B2, and B3, using a 90 percent family confidence coefficient. Interpret your results.*
+
+```{r}
+confint(model2, level = 1 - 0.10/(2*3))
+
+```
+
+The confidence intervals around the estimates of the betas somewhat confirm what the model diagnostics show. Since 0 is included in the interval for X2 and X3, we cannot say they are significant predictors. However, since 0 does not fall in the interval for X1, we can say that there is evidence of X1 being a significant predictor for Y.
+
+*(c) Calculate the coefficient of multiple determination. What does it indicate here?*
+
+```{r}
+summary(model2)$r.squared
+
+```
+
+The multiple coefficient of determination, or the R^2, tells us how much of the variation in Y is explained by the independent variables in the model. For this model, about 68% of the variation in patient satisfaction is explain by patient's age (in years) and anxiety level (on an index). We saw earlier that severity of illness (on an index) does not assist in explaining this variation.

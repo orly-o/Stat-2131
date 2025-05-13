@@ -1,0 +1,187 @@
+---
+title: "2131 HW9"
+author: "Orly Olbum"
+date: ""
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Fall 2020/STAT 2131 - Applied Statistical Methods 1/Homeworks/HW9")
+
+library(olsrr)
+library(dplyr)
+library(MASS)
+library(glmnet)
+library(MLmetrics)
+
+steam = read.csv("steam.csv")
+fat = read.csv("fat.csv")
+```
+
+## Problem 1
+
+*Consider the data "Steam.txt" where you are trying to predict steam usage using fat, glycerine, wind, freezday and temp. Perform forward and backward selection with alpha1 = 0.1 and alpha2 = 0.2, respectively.*
+
+*Which covariates did you include in the full model?*
+
+*How does this compare when you perform best subset regression using AIC to rank models?*
+
+*Does the model chosen with best subset regression change when you use BIC to rank models? Example R code can be found on Canvas to help you get started.*
+
+First backward selection. We will start by including all covariates, and remove the term with the largest p-value greater than alpha2 = 0.2.
+```{r}
+start_model = lm(steam ~ fat + glycerine + wind + frezday + temp, data = steam)
+summary(start_model)$coefficients
+```
+
+We see that **wind** has the largest p-value over 0.2, so we remove it and re-run the model.
+```{r}
+next_model = lm(steam ~ fat + glycerine + frezday + temp, data = steam)
+summary(next_model)$coefficients
+```
+
+Next, **glycerine** has the largest p-value over 0.2, so we remove it and re-run the model.
+```{r}
+next_model_2 = lm(steam ~ fat + frezday + temp, data = steam)
+summary(next_model_2)$coefficients
+```
+
+Next, **frezday** has a large p-value over 0.2.
+```{r}
+next_model_3 = lm(steam ~ fat + temp, data = steam)
+summary(next_model_3)$coefficients
+```
+
+We now have a model that has all p-values under the alpha2 threshold. We keep covariates **fat** and **temp**.
+
+Now, let's try forward selection. We start with a model that only has the intercept.
+```{r}
+for_model = lm(steam ~ 1, data = steam)
+summary(for_model)$coefficients
+```
+
+Now we run a model for each of the covariates, and keep the one with the smallest p-value under alpha1 = 0.1.
+```{r}
+for_model_1 = lm(steam ~ fat, data = steam)
+summary(for_model_1)$coefficients
+for_model_2 = lm(steam ~ glycerine, data = steam)
+summary(for_model_2)$coefficients
+for_model_3 = lm(steam ~ wind, data = steam)
+summary(for_model_3)$coefficients
+for_model_4 = lm(steam ~ frezday, data = steam)
+summary(for_model_4)$coefficients
+for_model_5 = lm(steam ~ temp, data = steam)
+summary(for_model_5)$coefficients
+```
+
+The lowest p-value belongs to the temp term, so we add that to the model and repeat with the remaining 4 covariates.
+```{r}
+for_model_next_1 = lm(steam ~ temp + fat, data = steam)
+summary(for_model_next_1)$coefficients
+for_model_next_2 = lm(steam ~ temp + glycerine, data = steam)
+summary(for_model_next_2)$coefficients
+for_model_next_3 = lm(steam ~ temp + wind, data = steam)
+summary(for_model_next_3)$coefficients
+for_model_next_4 = lm(steam ~ temp + frezday, data = steam)
+summary(for_model_next_4)$coefficients
+```
+
+The fat term has the lowest p-value under alpha1, so we add it to the model and repeat with the remaining 3 covariates.
+```{r}
+for_model_next_next_1 = lm(steam ~ temp + fat + glycerine, data = steam)
+summary(for_model_next_next_1)$coefficients
+for_model_next_next_2 = lm(steam ~ temp + fat + wind, data = steam)
+summary(for_model_next_next_2)$coefficients
+for_model_next_next_3 = lm(steam ~ temp + fat + frezday, data = steam)
+summary(for_model_next_next_3)$coefficients
+```
+
+None of the remaining 3 variables have p-values lower than alpha1, so we leave the model as is with fat and temp as predictors for steam, which is the same result we reached with backward selection.
+
+Using best AIC to choose:
+```{r}
+full_model = lm(steam ~ fat + glycerine + wind + frezday + temp, data = steam)
+best_subset = olsrr::ols_step_best_subset(full_model)
+# which.max(best_subset$aic)
+predictors.include.aic = strsplit(best_subset$predictors[which.max(best_subset$aic)], "[ ]+", perl = T)[[1]]
+predictors.include.aic
+```
+
+The model with best AIC is model 1, which here only includes temp as a predictor. Using BIC:
+```{r}
+# which.max(best_subset$sbic)
+predictors.include.bic = strsplit(best_subset$predictors[which.max(best_subset$sbic)], "[ ]+", perl = T)[[1]]
+predictors.include.bic
+```
+
+We have the same result for both AIC and BIC model selection - a model with only temp as a predictor for steam.
+
+\newpage
+## Problem 4
+
+*Consider the data Fat.txt. Remove every tenth observation from the data for use as a test sample. Use the remaining data to fit (i.e. train) the following models where % body fat, siri, is the response and all other variables are predictors:*
+
+*(i) A simple linear model.*
+
+*(ii) Ridge regression, where the tuning parameter lambda is chosen with generalized cross validation. See RidgeExample.R for an example of how to do this in R. Plot the generalized cross validation value as a function of lambda so that the minimum value is clearly visible.*
+
+Models (i) and (ii):
+
+```{r}
+# remove every 10th observation
+test = fat[seq(0, nrow(fat), 10), ] # save every 10th obs as training data
+train = fat[-seq(0, nrow(fat), 10), ] # save data without every 10th obs as testing data
+
+x_train = model.matrix(siri ~ ., data = train)[, -1]
+x_test = model.matrix(siri ~ ., data = test)[, -1]
+
+y_train = train$siri
+y_test = test$siri
+
+# simple linear model
+model_slr = lm(siri ~ ., data = train)
+summary(model_slr)
+
+# training error for slr model
+pred_slr = predict(model_slr, train)
+mean((y_train - pred_slr)^2)
+
+# ridge regression
+ridge_modt = glmnet(x_train, y_train, alpha = 0) # no designated lambda
+plot(ridge_modt)
+
+# use cv.glmnet to find optimal lambda
+cv.out = cv.glmnet(x_train, y_train, alpha = 0)
+bestlam = cv.out$lambda.min
+bestlam
+plot(cv.out) # see optimal lambda
+
+ridge_modl = glmnet(x_train, y_train, lambda = bestlam) # bring in best lambda for ridge model fit
+summary(ridge_modl)
+
+# training error for ridge model
+pred_ridge = predict(ridge_modl, newx = x_train)
+mean((y_train - pred_ridge)^2)
+```
+
+*(a) Which model has the smaller training error (see problem 2)? Why is training error a poor judge of how well the model will predict future data?*
+
+The simple linear regression model has a smaller training error. From problem 2, we saw that the training error usually underestimates the test/prediction error, so it is not a great judge of accuracy for predicting future data.
+
+*(b) Now use the models you fit in (i) and (ii) to predict the held out data. Which model performs better? Clearly indicate the metric (i.e. loss function) you used to judge model performance. (Hint: since you are using squared loss to choose lambda, you might want to use squared loss to judge prediction...)*
+
+Since we are comparing the model prediction against the test data (held out), we want to calculate the test MSE for each model. We are looking for the smaller MSE to tell us which model performs better at predicting % body fat (siri).
+
+```{r}
+# SLR model
+pred_test = predict(model_slr, test)
+mean((y_test - pred_test) ^ 2) # test MSE
+
+# RIDGE model
+ridge_pred_test = predict(ridge_modl, s = bestlam, newx = x_test)
+mean((y_test - ridge_pred_test ) ^ 2) # test MSE
+```
+
+With the lower MSE belonging to the SLR model, we can conclude that the simple linear regression model performs better when fitting to predict % body fat (siri).
+

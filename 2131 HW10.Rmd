@@ -1,0 +1,173 @@
+---
+title: "2131 HW10"
+author: "Orly Olbum"
+date: ''
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Fall 2020/STAT 2131 - Applied Statistical Methods 1/Homeworks/HW10")
+library(chemometrics)
+library(pls)
+library(glmnet)
+```
+
+## Problem 1
+
+*Consider the data set "NIR" in the R package 'chemometrics', which contains the first derivatives (with respect to wavelength) of near infrared spectroscopy (NIR) absorbance values at p = 235 wavelengths between 1115-2285nm. The goal is to use these covariates to predict the glucose concentration in n = 166 alcoholic fermentation mashes of feedstock. The columns in the covariate matrix NIR$xNIR are arranged in order of increasing wavelength.*
+
+*(a) Concentration is typically right skewed, and often times must be transformed to meet linear modeling assumptions. Use ordinary least squares to regress glucose concentration onto ten randomly chosen predictors. Using the results from this regression, do you think a transformation is warranted? Explain. (Hint: To make results as interpretable as possible, it is usually best to avoid complex transformations if possible.)*
+
+```{r}
+data(NIR)
+glucose = NIR$yGlcEtOH$Glucose
+pred1 = NIR$xNIR$X1115.0; pred2 = NIR$xNIR$X1125.0; pred3 = NIR$xNIR$X1135.0
+pred4 = NIR$xNIR$X1145.0; pred5 = NIR$xNIR$X1155.0; pred6 = NIR$xNIR$X1165.0
+pred7 = NIR$xNIR$X1175.0; pred8 = NIR$xNIR$X1185.0; pred9 = NIR$xNIR$X1195.0
+pred10 = NIR$xNIR$X1205.0
+
+newdata = data.frame(glucose, pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, 
+                     pred9, pred10)
+
+model = lm(glucose ~ ., data = newdata)
+summary(model)$r.squared
+
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+There are some indications in the residual plots that transforming the predictors might make the model a bit smoother, and considering the R^2 is so low, we may want to do this. Additionally, the residual plots show *potential* outliers, but they look close enough that we would worry too much. None of the plots are alarming enough to jump to this conclusion, and we may be okay with this linear model.
+
+*(b) Let yi be the glucose concentration in fermentation mash i. Can ordinary least squares be used to estimate the parameters in the model (below) where Aj is the first derivative of the absorbance spectrum at wavelength j? If not, can you suggest four other methods that we've looked at in class that might be used to estimate B1, ... , Bp in this model?*
+
+![](b formula.png)
+
+OLS cannot be used because p > n, which additionally cancels out other options for estimating B such as leave-one-out CV.
+
+Four alternate methods for estimating B1, ... , Bp:
+
+1. Kernel Estimation: take into account leverage scores of points that appear further away
+2. Bootstrap: we still have mostly constand variance, so we can use boostrap estimation
+3. Ridge Regression: if the model isn't fitting because of multicollinearity in the predictors, we might want to use ridge to take care of this - and it is in fact possible, given the type of predictor we have. Alternatively, using lasso would allow coefficients to be reduced to zero, which ridge does not allow
+4. LARS: take into account OLS nature but also the residuals, a combo of keeping the lm and also taking into account the residuals we aren't quite happy with yet
+
+**In the following questions, permute the observations by using the seed "1968", and then use the first 126 values for training and the last 40 values for testing.**
+
+*(c) Use the training set and principal component regression, using 9-fold cross validation to estimate the number of components, to estimate B from Model (1). That is, choose the number of components ^K to be (below) where xi is the ith row of the 126 x 235 covariate matrix and ^B(k)(-f ) is PCR's estimate for B with k components using data from folds 1, ... , f-1, f+1, ..., #folds = 9. (Remember that you need to account for the intercept!)*
+
+![](c formula.png)
+
+*(i) Plot L(k) as a function of k. What is ^K ?*
+
+```{r}
+par(mfrow = c(1, 1))
+# shuffle rows
+set.seed(1968)
+rows = sample(nrow(newdata))
+newdata = newdata[rows, ]
+
+# extract first 126 rows as training data, last 40 as testing data
+train = newdata[1:126,]
+test = newdata[127:166,]
+x_train = model.matrix(glucose ~ ., train)[, -1]
+x_test = model.matrix(glucose ~ ., test)[, -1]
+y_train = train[,1]
+y_test = test[,1]
+
+# CV to estimate beta using training data
+pcr_model = pcr(glucose ~ ., data = train, scale = TRUE, validation = "CV")
+summary(pcr_model)
+validationplot(pcr_model, val.type = "MSEP")
+# min error occurs at comps = 9
+
+pcr_pred = predict(pcr_model, x_test, ncomp = 9)
+mean((pcr_pred - y_test)^2)
+```
+
+We can see that the CV error halts when 10 components are used, which is everything. We can also see that the lowest error occurs at M = 9 components, and that using all components increases % of variance to 100. We now have k, which is the minumum of the function above, 9 - where the error fails when PCR is fitted onto the model.
+
+*(ii) Plot your estimate for B as a function of wavelength lambda. What do you conclude?*
+
+```{r}
+x = model.matrix(glucose ~ ., newdata)[, -1]
+y = newdata[, 1]
+
+pcr_fit = pcr(y ~ x, scale = TRUE, ncomp = 9)
+summary(pcr_fit)
+validationplot(pcr_fit, val.type = "MSEP")
+```
+
+When we apply the results from (i) to the full dataset, we see that the error does fail at 9 components.
+
+*(iii) Repeat part (i) using leave one out cross validation instead of 9-fold cross validation. How does the loss compare to part (i)?*
+
+```{r}
+pcr_model_loo = pcr(glucose ~ ., data = train, scale = TRUE, validation = "LOO")
+pcr_pred_loo = predict(pcr_model_loo, x_test)
+mean((pcr_pred_loo - y_test)^2)
+```
+
+The loss is lower than that of (i), which would indicate LOO is a more accurate prediction method than k-fold CV above.
+
+*(d) Repeat (c), but with partial least squares.*
+
+```{r}
+pls_fit = plsr(glucose ~ ., data = train, scale = TRUE, validation = "CV")
+summary(pls_fit)
+validationplot(pls_fit, val.type = "MSEP")
+```
+
+With partial least squares (PLS), the lowest cross-validated error occurs when M = 9.
+
+```{r}
+pls_fit2 = plsr(glucose ~ ., data = newdata, scale = TRUE, ncomp = 9)
+summary(pls_fit2)
+validationplot(pls_fit2, val.type = "MSEP")
+```
+
+The plot of the components of the main dataset shows the error fail at M = 9 for PLS.
+
+*(e) Now use LASSO to estimate B with lambda chosen with 9-fold cross validation. Plot L(lambda) as a function of log(lambda).*
+
+```{r}
+lasso_mod = glmnet(x_train, y_train, alpha = 1)
+plot(lasso_mod)
+
+# use cv.glmnet to find optimal lambda
+cv.out = cv.glmnet(x_train, y_train, alpha = 1)
+bestlam = cv.out$lambda.min
+bestlam
+plot(cv.out)
+
+lasso_mod_2 = glmnet(x_train, y_train, lambda = bestlam, alpha = 1)
+summary(lasso_mod_2)
+
+# fit lasso on full model
+lasso_full = glmnet(x, y, alpha = 1, lambda = bestlam)
+lasso_coef = predict(lasso_full, type = "coefficients", s = bestlam)
+lasso_coef
+```
+
+The plot shows log(lambda) and we have an optimal lambda shown in the code above.
+
+*(f) Use the test data to evaluate PCR's, PLS's, and LASSO's predictive performance on this dataset. Comment on L's ability to estimate the testing error.*
+
+```{r}
+# PCR test error
+pcr_pred = predict(pcr_model, x_test, ncomp = 4)
+mean((pcr_pred - y_test)^2)
+
+# PLS test error
+pls_pred = predict(pls_fit, x_test, ncomp = 2)
+mean((pls_pred - y_test)^2)
+
+# lasso test error
+lasso_pred = predict(lasso_full, x_test)
+mean((lasso_pred - y_test)^2)
+```
+
+It looks like the best predictive performance belongs to the lasso estimate of beta, with the lowest test error, indicating that L was not the best prediction estimate.
+

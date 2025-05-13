@@ -1,0 +1,86 @@
+---
+title: "2131 HW6"
+author: "Orly Olbum"
+date: ""
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Fall 2020/STAT 2131 - Applied Statistical Methods 1/Homeworks/HW6")
+steam = read.csv("steam_text.csv")
+
+```
+
+## Question 4
+
+*(a) Suppose you regress steam (Y) onto fat (X1) and glycerine (X2).*
+
+*(i) Write down the model you are assuming when performing this regression (i.e. what is the mean and variance model). Provide an interpretation for the coefficients in the mean model.*
+
+```{r}
+model = lm(steam ~ fat + glycerine, data = steam)
+summary(model)
+summary(aov(model))
+
+```
+
+For a first order linear regression model, we assume:
+  - the mean model is linear in both X variables
+    - the regression function is a plane
+    - the regression function is linear in both X variables
+    - the association between Y and one of the X variables does not depend on the other X variable
+  - we assume independent residuals (and normally distributed)
+
+The fitted linear model above shows an equation of: steam = 4.625 + 1.728xfat + -6.628xglycerine, meaning for every unit increase in steam, there is a 1.728 unit increase in fat and a 6.628 unit decrease in glycerine. At alpha = 0.05, neither of these variables prove to be significant as linear predictors for steam output. This leaves us with an underfit model, because we are leaving out variable that could explain the variation in steam.
+
+The variance model (ANOVA output) also does not show significance at alpha = 0.05, but it does show us that there is more variation due to the fat variable than the glycerine variable in steam.
+
+*(ii) In separate plots, plot e-hat as a function of Y-hat, fat and glycerine. Do you see any evidence that the mean or variance model is incorrect?*
+
+```{r, fig.width = 5, fig.height = 3}
+model.res = resid(model)
+plot(steam$steam, model.res, ylab = "Residuals", xlab = "Steam", main="Residuals/Model Fit")
+plot(steam$fat, model.res, ylab = "Residuals", xlab = "Fat", main="Residuals/Fat")
+plot(steam$glycerine, model.res, ylab = "Residuals", xlab = "Glycerine", main="Residuals/Glycerine")
+
+```
+
+The first plot shows a strong positive association between steam and the model residuals. Because the R^2 of the model is very low, this relationship indicates a potentially poor model. If the R^2 was higher, the dependent variable's variation would be explained more by the independent variables. This is not the case here. The second plot and third plots show no (obvious) association between the variables and the model residuals, indicating a correct model.
+
+*(iii) Consider the null hypothesis that the coefficients for both fat and glycerine are 0. At a significance level of alpha = 0.05, what do you conclude about these coefficients?*
+
+At alpha = 0.05, we fail to reject the hypothesis of coefficients being 0 and conclude that we do not have evidence to support fat and glycerine being significant predictors for steam.
+
+*(iv) Plot the variable “temp” against the residuals from this regression. What can you conclude from this plot?*
+
+```{r, fig.width = 5, fig.height = 3}
+plot(steam$temp, model.res, ylab = "Model Residuals", xlab = "Temp", main = "Temp vs. Model Residuals")
+
+```
+
+We see in this plot that there is a negative association between temp and the model residuals.
+
+*(b) Now regress steam (Y) onto fat (X1), glycerine (X2) and temp (X3).*
+
+```{r}
+model2 = lm(steam ~ fat + glycerine + temp, data = steam)
+summary(model2)
+summary(aov(model2))
+
+```
+
+*(i) Consider the null hypothesis that the coefficients for both fat and glycerine are 0. At a significance level of alpha = 0.05, what do you conclude about these coefficients?*
+
+From the mean model, we can see that both fat and glycerine still are not significant predictors of steam, but the variance model shows that with temp in the mix as another independent variable, fat is a significant predictor. Glycerine remains insignificant, at alpha = 0.05.
+
+*(ii) Why are the P values from this test so much smaller than those from part (a)?*
+
+The R^2 of this model has risen by a lot, indicating that the independent variables are now accounting for much more of the variation in the dependent variable (steam) than in the prior model. Because of this, the p-values will be lower, because they are dependent on the F-values, which in turn depends on the mean squared error (and therefore variance). We see that in both the mean and variance models, temp is a significant predictor for steam. A plot of the residuals for this model against steam will show no obvious association, telling us that the variation in steam is explained by the model itself (moreso than the first model).
+
+```{r, fig.width = 5, fig.height = 3}
+model2.res = resid(model2)
+plot(steam$steam, model2.res, ylab = "Residuals", xlab = "Steam", main="Residuals/Model 2 Fit")
+
+```
+
